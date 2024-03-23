@@ -8,30 +8,14 @@
 
 void delay(uint32_t);
 void RCC_SysClockConfig(void);
+void GPIO_LedsConfig(void);
 
 int main(void)
 {
 	/*Change clock speed to 100 MHz*/
 	RCC_SysClockConfig();
-	/*Enable LED clocks*/
-	RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN;
-	/*LD3*/
-	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE13_Pos); /*Output*/
-	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED13_Pos); /*Fast speed*/
-	
-	/*LD4*/
-	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE14_Pos); /*Output*/
-	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED14_Pos); /*Fast speed*/
-	
-	/*LD5*/
-	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE15_Pos); /*Output*/
-	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED15_Pos); /*Fast speed*/
-	GPIOD->BSRR |= GPIO_BSRR_BS15;
-	
-	/*LD2*/
-	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE12_Pos); /*Output*/
-	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED12_Pos); /*Fast speed*/
-	GPIOD->BSRR |= GPIO_BSRR_BS12;
+	/*Enable 4 LEDs*/
+	GPIO_LedsConfig();
 	
 	while(1)
 	{
@@ -65,6 +49,29 @@ void RCC_SysClockConfig(void)
 	RCC->CFGR = cfgrRegister;
 	/*Update SystemCoreClock global variable*/
 	SystemCoreClockUpdate();
+}
+
+void GPIO_LedsConfig(void)
+{
+	/*Enable LED clocks*/
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN;
+	/*LD2*/
+	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE12_Pos); /*Output*/
+	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED12_Pos); /*Fast speed*/
+	GPIOD->BSRR |= GPIO_BSRR_BS12;
+	
+	/*LD3*/
+	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE13_Pos); /*Output*/
+	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED13_Pos); /*Fast speed*/
+	
+	/*LD4*/
+	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE14_Pos); /*Output*/
+	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED14_Pos); /*Fast speed*/
+	
+	/*LD5*/
+	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE15_Pos); /*Output*/
+	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED15_Pos); /*Fast speed*/
+	GPIOD->BSRR |= GPIO_BSRR_BS15;
 }
 
 void delay(uint32_t time)
