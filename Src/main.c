@@ -1,5 +1,10 @@
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include "stm32f4xx.h"
+
+/*Peripherals headers*/
+#include "uart.h"
 
 /*freeRTOS headers*/
 #include "FreeRTOS.h"
@@ -9,18 +14,65 @@
 void delay(uint32_t);
 void RCC_SysClockConfig(void);
 void GPIO_LedsConfig(void);
+void vTaskUART(void *);
+void vTaskMain(void *);
 
+/*
+ * ==========================================
+ * Main function
+ * ==========================================
+ */
 int main(void)
 {
 	/*Change clock speed to 100 MHz*/
 	RCC_SysClockConfig();
 	/*Enable 4 LEDs*/
 	GPIO_LedsConfig();
-	
+	/*Create Tasks*/
+	xTaskCreate(vTaskUART, "UART", 256, NULL, 1, NULL); /*256 * 4 bytes (configSTACK_DEPTH_TYPE) = 1 KB*/
+	xTaskCreate(vTaskMain, "Main", 256, NULL, 1, NULL);
+	/*Start the tasks scheduler*/
+	vTaskStartScheduler();
+	/*Does not reach here*/
+	while(1);
+}
+
+/*
+ * ==========================================
+ * vTaskUART, read incoming data and send to Queue
+ * ==========================================
+ */
+void vTaskUART(void *params)
+{
+	uint8_t data;
+	char buffer[20];
+	uint8_t bufferSize = sizeof(buffer);
+	uint8_t idx = 0;
 	while(1)
 	{
-			GPIOD->ODR ^= GPIO_ODR_OD13 | GPIO_ODR_OD12 | GPIO_ODR_OD14 | GPIO_ODR_OD15;
-			delay(200000);
+		data = UART_ReadByte();
+		if(!data && idx > 0)
+		{
+		}
+		if(idx < bufferSize - 1)
+		{
+			buffer[idx] = (char)data;
+			buffer[idx++] = '\0';
+		}
+		else
+		{
+			idx = 0;
+		}
+	}
+}
+
+void vTaskMain(void *params)
+{
+	TickType_t tick = pdMS_TO_TICKS(500);
+	while(1)
+	{
+		GPIOD->ODR ^= GPIO_ODR_OD13 | GPIO_ODR_OD12 | GPIO_ODR_OD14 | GPIO_ODR_OD15;
+		vTaskDelay(tick);
 	}
 }
 
@@ -43,8 +95,10 @@ void RCC_SysClockConfig(void)
 	RCC->CR |= RCC_CR_PLLON;
 	/*Config high-speed busses and switch main sys clock to PLL*/	
 	uint32_t cfgrRegister = RCC_CFGR_PPRE1_DIV2 | RCC_CFGR_PPRE2_DIV1 | RCC_CFGR_HPRE_DIV1 | RCC_CFGR_SW_PLL;
-	/*Set FLASH wait state to 4*/
+	/*Set FLASH wait state to 3*/
 	FLASH->ACR |= FLASH_ACR_LATENCY_3WS;
+	/*Wait till PLL locked*/
+	while(!((RCC->CR & RCC_CR_PLLRDY) != 0));
 	/*Write to config register*/
 	RCC->CFGR = cfgrRegister;
 	/*Update SystemCoreClock global variable*/

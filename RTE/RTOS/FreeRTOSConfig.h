@@ -49,11 +49,12 @@ extern uint32_t SystemCoreClock;
 
 /* Constants that describe the hardware and memory usage. */
 #define configCPU_CLOCK_HZ                    (SystemCoreClock)
-#define configTICK_RATE_HZ                    ((TickType_t)1000)
+#define configTICK_RATE_HZ                    ((TickType_t)100)
 #define configTOTAL_HEAP_SIZE                 ((size_t)8192)
 #define configMINIMAL_STACK_SIZE              ((uint16_t)256)
 #define configSUPPORT_DYNAMIC_ALLOCATION      1
 #define configSUPPORT_STATIC_ALLOCATION       0
+#define configSTACK_DEPTH_TYPE								uint32_t
 
 /* Constants related to the behaviour or the scheduler. */
 #define configMAX_PRIORITIES                  5

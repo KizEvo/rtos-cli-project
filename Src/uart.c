@@ -16,17 +16,17 @@ void UART_Config(void)
 	/* Write desired baud rate = Fpclk / (8 * (2 - OVER8) * USARTDIV)
 	 * OVER8 = 0 by default */
 	float baudRate = 9600.0;
-	float usartDivTemp = (SystemCoreClock / 2.0) / (16.0 * baudRate);
+	float usartDivTemp = ((float)SystemCoreClock / 2.0) / (16.0 * baudRate);
 	uint8_t fraction = 16 * ((uint32_t)(usartDivTemp * 100) % 100);
 	uint16_t mantissa = (uint16_t)usartDivTemp;
 	USART2->BRR = (mantissa << 4) | fraction;
-	/*Enable transmit*/
-	USART2->CR1 |= USART_CR1_TE;
+	/*Enable transmit and reception*/
+	USART2->CR1 |= USART_CR1_TE | USART_CR1_RE;
 }
 
 /* 
  * ==========================================
- * Write data to the USART transmit register
+ * Write data to the USART transmit register then wait for it to complete
  * ==========================================
  */
 void UART_WriteByte(uint8_t data)
@@ -42,6 +42,5 @@ void UART_WriteByte(uint8_t data)
  */
 uint8_t UART_ReadByte(void)
 {
-	while(!((USART2->SR & USART_SR_RXNE) != 0)); /*Wait till data available in the register*/
 	return USART2->DR & 0xFF;
 }
