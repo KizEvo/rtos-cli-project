@@ -11,17 +11,29 @@
  */
 void UART_Config(void)
 {
-	uint32_t configRegCR1 = USART_CR1_UE | (0x1 << USART_CR1_M_Pos);
-	USART2->CR1 = configRegCR1;
+	/*Enable GPIOA clock and USART2*/
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+	RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+	
+	/*Config I/O pin, alt func - push pull and high speed*/
+	GPIOA->MODER |= (0x2 << GPIO_MODER_MODE2_Pos) | (0x2 << GPIO_MODER_MODE3_Pos);
+	
+	GPIOA->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED2_Pos);
+	
+	/*Alternate function selection for port 2 and 3 bit*/
+	GPIOA->AFR[0] = (0x7 << GPIO_AFRL_AFSEL2_Pos) | (0x7 << GPIO_AFRL_AFSEL3_Pos); /*write 0x7 as stated in the datasheet - https://www.st.com/resource/en/datasheet/stm32f411ce.pdf Table 9*/
+	
+	USART2->CR1 |= (USART_CR1_UE | (0x1 << USART_CR1_M_Pos));
 	/* Write desired baud rate = Fpclk / (8 * (2 - OVER8) * USARTDIV)
 	 * OVER8 = 0 by default */
-	float baudRate = 9600.0;
-	float usartDivTemp = ((float)SystemCoreClock / 2.0) / (16.0 * baudRate);
-	uint8_t fraction = 16 * ((uint32_t)(usartDivTemp * 100) % 100);
-	uint16_t mantissa = (uint16_t)usartDivTemp;
-	USART2->BRR = (mantissa << 4) | fraction;
+	float baudRate = 9600;
+	float usartDivTemp = ((float)SystemCoreClock / 2) / (16 * baudRate);
+	uint8_t fraction = 16 * ((float)((uint32_t)(usartDivTemp * 100) % 100) / 100);
+	uint32_t mantissa = (uint32_t)usartDivTemp;
+	USART2->BRR = ((mantissa << 4) | fraction);
 	/*Enable transmit and reception*/
-	USART2->CR1 |= USART_CR1_TE | USART_CR1_RE;
+	USART2->CR1 |= USART_CR1_TE;
+	USART2->CR1 |= USART_CR1_RE;
 }
 
 /* 
@@ -42,5 +54,7 @@ void UART_WriteByte(uint8_t data)
  */
 uint8_t UART_ReadByte(void)
 {
-	return USART2->DR & 0xFF;
+	while(!((USART2->SR & USART_SR_RXNE)));
+	uint8_t result = USART2->DR & 0x3F;
+	return result;
 }

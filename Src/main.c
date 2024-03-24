@@ -11,11 +11,13 @@
 #include "task.h"
 #include "queue.h"
 
-void delay(uint32_t);
 void RCC_SysClockConfig(void);
 void GPIO_LedsConfig(void);
-void vTaskUART(void *);
-void vTaskMain(void *);
+void vTaskUARTReceive(void *);
+void vTaskUARTSend(void *);
+void vTaskOthers(void *);
+
+char buffer[100];
 
 /*
  * ==========================================
@@ -26,11 +28,16 @@ int main(void)
 {
 	/*Change clock speed to 100 MHz*/
 	RCC_SysClockConfig();
+	/*Enable USART2*/
+	UART_Config();
 	/*Enable 4 LEDs*/
 	GPIO_LedsConfig();
+	
 	/*Create Tasks*/
-	xTaskCreate(vTaskUART, "UART", 256, NULL, 1, NULL); /*256 * 4 bytes (configSTACK_DEPTH_TYPE) = 1 KB*/
-	xTaskCreate(vTaskMain, "Main", 256, NULL, 1, NULL);
+	xTaskCreate(vTaskUARTReceive, "UARTRe", 512, NULL, 2, NULL); /*256 * 4 bytes (configSTACK_DEPTH_TYPE) = 1 KB*/
+	xTaskCreate(vTaskUARTSend, "UARTSe", 256, NULL, 1, NULL);
+	xTaskCreate(vTaskOthers, "Others", 256, NULL, 1, NULL);
+	
 	/*Start the tasks scheduler*/
 	vTaskStartScheduler();
 	/*Does not reach here*/
@@ -39,36 +46,48 @@ int main(void)
 
 /*
  * ==========================================
- * vTaskUART, read incoming data and send to Queue
+ * vTaskUARTReceive, read incoming data
  * ==========================================
  */
-void vTaskUART(void *params)
+void vTaskUARTReceive(void *params)
 {
-	uint8_t data;
-	char buffer[20];
-	uint8_t bufferSize = sizeof(buffer);
-	uint8_t idx = 0;
+	uint8_t data = 0;
+	char idx = 0;
+	char *command[] = {"turn LED on ", "turn LED off", "blink LED ", "echo "};
+	TickType_t tick = pdMS_TO_TICKS(1000);
 	while(1)
 	{
+		if(idx >= 10) 
+		{
+			vTaskDelay(tick);
+			continue;
+		}
 		data = UART_ReadByte();
-		if(!data && idx > 0)
+		if(data)
 		{
-		}
-		if(idx < bufferSize - 1)
-		{
-			buffer[idx] = (char)data;
-			buffer[idx++] = '\0';
-		}
-		else
-		{
-			idx = 0;
+			buffer[idx++] = data;
 		}
 	}
 }
 
-void vTaskMain(void *params)
+/*
+ * ==========================================
+ * vTaskUARTSend, send serial data 
+ * ==========================================
+ */
+void vTaskUARTSend(void *params)
 {
-	TickType_t tick = pdMS_TO_TICKS(500);
+	while(1);
+}
+
+/*
+ * ==========================================
+ * vTaskOthers, handle other task
+ * ==========================================
+ */
+void vTaskOthers(void *params)
+{
+	TickType_t tick = pdMS_TO_TICKS(100);
 	while(1)
 	{
 		GPIOD->ODR ^= GPIO_ODR_OD13 | GPIO_ODR_OD12 | GPIO_ODR_OD14 | GPIO_ODR_OD15;
@@ -76,10 +95,15 @@ void vTaskMain(void *params)
 	}
 }
 
+/*
+ * ==========================================
+ * Config main system clock, we use PLL.
+ * ==========================================
+ */
 void RCC_SysClockConfig(void)
 {
 	/*PLLSRC = HSI, VCO in = HSI / 2, VCO out = VCO in * 50 = 400MHz, Main SysClock = 400MHz / 4 (PLLP) = 100 MHz (max clock of HCLK)*/
-	uint32_t pllcfgrRegister = 0x24003010;
+	uint32_t pllcfgrRegister = 0x24003010; /*Reset value, check the datasheet*/
 
 	pllcfgrRegister &= ~RCC_PLLCFGR_PLLM_Msk;
 	pllcfgrRegister |= 2 << RCC_PLLCFGR_PLLM_Pos;
@@ -126,17 +150,4 @@ void GPIO_LedsConfig(void)
 	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE15_Pos); /*Output*/
 	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED15_Pos); /*Fast speed*/
 	GPIOD->BSRR |= GPIO_BSRR_BS15;
-}
-
-void delay(uint32_t time)
-{
-	volatile uint32_t i = 0, j = 0;
-	while(i < time)
-	{
-		i++;
-		while(j < time)
-		{
-			j++;
-		}
-	}
 }
