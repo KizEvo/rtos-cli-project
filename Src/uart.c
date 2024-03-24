@@ -2,6 +2,9 @@
 #include "stm32f4xx.h"                  // Device header
 #include "uart.h"
 
+volatile uint8_t receiveBuff[RECEIVE_BUFF_LEN] = {};
+volatile uint8_t receiveBuffIdx = 0;
+
 /* 
  * ==========================================
  * Config USART2 to transmit data
@@ -26,13 +29,18 @@ void UART_Config(void)
 	USART2->CR1 |= (USART_CR1_UE | (0x1 << USART_CR1_M_Pos));
 	/* Write desired baud rate = Fpclk / (8 * (2 - OVER8) * USARTDIV)
 	 * OVER8 = 0 by default */
-	float baudRate = 9600;
+	float baudRate = 115200;
 	float usartDivTemp = ((float)SystemCoreClock / 2) / (16 * baudRate);
 	uint8_t fraction = 16 * ((float)((uint32_t)(usartDivTemp * 100) % 100) / 100);
 	uint32_t mantissa = (uint32_t)usartDivTemp;
 	USART2->BRR = ((mantissa << 4) | fraction);
-	/*Enable transmit and reception*/
+	/*Enable transmit and interrupt reception*/
 	USART2->CR1 |= USART_CR1_TE;
+	
+	NVIC_EnableIRQ(USART2_IRQn); 	/*Enable NVIC for USART2*/
+	
+	USART2->CR1 |= (USART_CR1_RXNEIE); /*Interrupt on receiving data*/
+	
 	USART2->CR1 |= USART_CR1_RE;
 }
 
@@ -55,6 +63,61 @@ void UART_WriteByte(uint8_t data)
 uint8_t UART_ReadByte(void)
 {
 	while(!((USART2->SR & USART_SR_RXNE)));
-	uint8_t result = USART2->DR & 0x3F;
+	uint8_t result = USART2->DR;
 	return result;
+}
+
+/*
+ * ==========================================
+ * Write string to USART transmit register
+ * ==========================================
+ */
+void UART_WriteString(char *string)
+{
+	uint16_t i;
+	for(i = 0; string[i] <= 127 && string[i] != '\0'; i++)
+	{
+		UART_WriteByte(string[i]);
+	}
+}
+
+/*
+ * ==========================================
+ * Write N length string to USART transmit register
+ * ==========================================
+ */
+void UART_WriteNString(char *string, uint8_t N)
+{
+	uint16_t i;
+	for(i = 0; i < N; i++)
+	{
+		UART_WriteByte(string[i]);
+	}
+}
+
+/*
+ * ==========================================
+ * Write back receive buffer to USART transmit register
+ * ==========================================
+ */
+void UART_WriteReceiveBuffer(void)
+{
+	uint8_t i;
+	for(i = 0; i < receiveBuffIdx; i++)
+	{
+		UART_WriteByte(receiveBuff[i]);
+	}
+	receiveBuffIdx = 0; /*Buffer pointer set to the start => Clear buffer*/
+}
+
+/*
+ * ==========================================
+ * USART2 IRQ Handler
+ * ==========================================
+ */
+void USART2_IRQHandler(void)
+{
+	receiveBuff[receiveBuffIdx++] = USART2->DR;
+	receiveBuffIdx = receiveBuffIdx % RECEIVE_BUFF_LEN;
+	USART2->SR &= ~USART_SR_RXNE;
 }

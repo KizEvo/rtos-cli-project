@@ -17,8 +17,6 @@ void vTaskUARTReceive(void *);
 void vTaskUARTSend(void *);
 void vTaskOthers(void *);
 
-char buffer[100];
-
 /*
  * ==========================================
  * Main function
@@ -51,21 +49,15 @@ int main(void)
  */
 void vTaskUARTReceive(void *params)
 {
-	uint8_t data = 0;
-	char idx = 0;
 	char *command[] = {"turn LED on ", "turn LED off", "blink LED ", "echo "};
 	TickType_t tick = pdMS_TO_TICKS(1000);
 	while(1)
 	{
-		if(idx >= 10) 
+		if(receiveBuffIdx >= 10) 
 		{
 			vTaskDelay(tick);
+			UART_WriteReceiveBuffer();
 			continue;
-		}
-		data = UART_ReadByte();
-		if(data)
-		{
-			buffer[idx++] = data;
 		}
 	}
 }
@@ -129,6 +121,11 @@ void RCC_SysClockConfig(void)
 	SystemCoreClockUpdate();
 }
 
+/*
+ * ==========================================
+ * Enable USER LEDS on the board.
+ * ==========================================
+ */
 void GPIO_LedsConfig(void)
 {
 	/*Enable LED clocks*/
