@@ -2,9 +2,15 @@
 #include "stm32f4xx.h"                  // Device header
 #include "uart.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
+
 volatile uint8_t receiveBuff[RECEIVE_BUFF_LEN] = {};
 volatile uint8_t receiveBuffIdx = 0;
-
+extern TaskHandle_t xTaskUARTReceiveHandle;
+extern SemaphoreHandle_t xBinarySemaphore;
+	
 /* 
  * ==========================================
  * Config USART2 to transmit data
@@ -36,6 +42,8 @@ void UART_Config(void)
 	USART2->BRR = ((mantissa << 4) | fraction);
 	/*Enable transmit and interrupt reception*/
 	USART2->CR1 |= USART_CR1_TE;
+	
+	NVIC_SetPriority(USART2_IRQn, configMAX_SYSCALL_INTERRUPT_PRIORITY - 1); /*Set priority higher than configMAX_SYSCALL_INTERRUPT_PRIORITY according to file port.c of freeRTOS at line 822*/
 	
 	NVIC_EnableIRQ(USART2_IRQn); 	/*Enable NVIC for USART2*/
 	
@@ -113,11 +121,24 @@ void UART_WriteReceiveBuffer(void)
 /*
  * ==========================================
  * USART2 IRQ Handler
+ * Deferred interrupt processing freeRTOS
  * ==========================================
  */
 void USART2_IRQHandler(void)
 {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE; /*Initialized to pdFALSE - Listing 7.8 Mastering the FreeRTOS Real Time Kernel*/
+	
+	/*Save data to buffer*/
 	receiveBuff[receiveBuffIdx++] = USART2->DR;
 	receiveBuffIdx = receiveBuffIdx % RECEIVE_BUFF_LEN;
-	USART2->SR &= ~USART_SR_RXNE;
+	USART2->SR &= ~USART_SR_RXNE; /*Clear interrupt flag*/
+	
+	/*'Give' the semaphore to unblock UARTReceive task, using the interrupt safe API version of give semaphore*/
+	xSemaphoreGiveFromISR(xBinarySemaphore, &xHigherPriorityTaskWoken);
+	/* Pass the xHigherPriorityTaskWoken value into portYIELD_FROM_ISR().
+	If xHigherPriorityTaskWoken was set to pdTRUE inside
+	xSemaphoreGiveFromISR() then calling portYIELD_FROM_ISR() will request
+	a context switch. If xHigherPriorityTaskWoken is still pdFALSE then
+	calling portYIELD_FROM_ISR() will have no effect.*/
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
