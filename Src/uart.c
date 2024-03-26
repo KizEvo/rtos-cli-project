@@ -134,7 +134,7 @@ void USART2_IRQHandler(void)
 	USART2->SR &= ~USART_SR_RXNE; /*Clear interrupt flag*/
 	
 	/*'Give' the semaphore to unblock UARTReceive task, using the interrupt safe API version of give semaphore*/
-	xSemaphoreGiveFromISR(xBinarySemaphore, &xHigherPriorityTaskWoken);
+	if(receiveBuffIdx == 1) xSemaphoreGiveFromISR(xBinarySemaphore, &xHigherPriorityTaskWoken);
 	/* Pass the xHigherPriorityTaskWoken value into portYIELD_FROM_ISR().
 	If xHigherPriorityTaskWoken was set to pdTRUE inside
 	xSemaphoreGiveFromISR() then calling portYIELD_FROM_ISR() will request

@@ -22,8 +22,10 @@ void GPIO_LedsConfig(void);
 void vTaskUARTReceive(void *);
 void vTaskUARTSend(void *);
 void vTaskOthers(void *);
+void TIM3_EnablePeripheral(void);
 uint8_t compareReceivedDataWithCmd(char *, volatile uint8_t *, uint8_t *, volatile uint8_t *, uint8_t, uint8_t);
 uint8_t receivedDataToNumb(volatile uint8_t *buffer, uint8_t idx, uint8_t N, uint16_t *numb);
+void delay(uint16_t);
 
 /*
  * ==========================================
@@ -49,16 +51,18 @@ int main(void)
 	UART_Config();
 	/*Enable 4 LEDs*/
 	GPIO_LedsConfig();
+	/*Enable TIM3*/
+	TIM3_EnablePeripheral();
 	
 	xBinarySemaphore = xSemaphoreCreateBinary();
 	
 	if(xBinarySemaphore != NULL) /*Check the semaphore was created successfully*/
 	{
 		/*Create Tasks*/
-		xTaskCreate(vTaskUARTReceive, "UARTRe", 512, NULL, 3, NULL); /*256 * 4 bytes (configSTACK_DEPTH_TYPE) = 1 KB*/
+		xTaskCreate(vTaskUARTReceive, "UARTRe", 512, NULL, 4, NULL); /*256 * 4 bytes (configSTACK_DEPTH_TYPE) = 1 KB*/
 		xTaskCreate(vTaskUARTSend, "UARTSe", 256, NULL, 1, &xTaskUARTSendHandle);
 		xTaskCreate(vTaskOthers, "Others", 512, NULL, 2, &xTaskOthersHandle);
-		
+		/*Create Queue*/
 		uint8_t queueSize = 20;
 		queue = xQueueCreate(queueSize, sizeof(uint8_t));
 		
@@ -80,7 +84,7 @@ void vTaskUARTReceive(void *params)
 	uint8_t commandLength = 4;
 	uint8_t commandCode = 0;
 	uint8_t i;
-	TickType_t forUARToFinished = pdMS_TO_TICKS(15);
+	TickType_t forUARToFinished = pdMS_TO_TICKS(20);
 	while(1)
 	{
 		if((commandCode & 0x80) != 0) /*If it's command 0-2 then do TaskOthers*/
@@ -92,7 +96,7 @@ void vTaskUARTReceive(void *params)
 		else if((commandCode & 0x40) != 0) /*If it's command 3 then do TaskUARTSend*/
 		{
 			commandCode = 0;
-			vTaskPrioritySet(xTaskUARTSendHandle, 4);
+			vTaskPrioritySet(xTaskUARTSendHandle, 3);
 		}
 		xSemaphoreTake(xBinarySemaphore, portMAX_DELAY); /*Wait indefinitely*/
 		/*Only execute when semaphore is taken, the semaphore is given in UART IRQ Handler*/
@@ -133,7 +137,9 @@ void vTaskUARTSend(void *params)
 {
 	while(1)
 	{
-		UART_WriteNString((void *)(&(receiveBuff[startIdx])), receiveBuffIdx);
+		receiveBuff[receiveBuffIdx] = '\n';
+		receiveBuff[receiveBuffIdx + 1] = '\0';
+		UART_WriteNString((void *)(&(receiveBuff[startIdx])), receiveBuffIdx + 2 - startIdx);
 		startIdx = 0;
 		receiveBuffIdx = 0;
 		vTaskPrioritySet(xTaskUARTSendHandle, 1);
@@ -151,10 +157,13 @@ void vTaskOthers(void *params)
 	uint16_t numb = 0;
 	uint8_t command = 0;
 	BaseType_t status = pdFALSE;
-	TickType_t tick;
+	uint16_t delayTime;
 	while(1)
 	{
-		status = xQueueReceive(queue, &command, 0);
+		if(status != pdTRUE)
+		{
+			status = xQueueReceive(queue, &command, 0);
+		}
 		if(status == pdTRUE && command < 0x83)
 		{
 			switch(command)
@@ -169,20 +178,27 @@ void vTaskOthers(void *params)
 			status = pdFALSE;
 			receiveBuffIdx = 0;
 			startIdx = 0;
+			command = 0;
 			vTaskPrioritySet(xTaskOthersHandle, 2);
 		} 
 		else if (status == pdTRUE && command >= 0x83)
 		{
-			status = pdFALSE;
-			startIdx = 0;
-			receiveBuffIdx = 0;
-			statusConvert = receivedDataToNumb(&receiveBuff[startIdx], startIdx, receiveBuffIdx, &numb);
-			tick = pdMS_TO_TICKS(numb);
-			while(statusConvert && command >= 0x83)
+			while(command >= 0x83)
 			{
-				xQueueReceive(queue, &command, 0);
-				GPIOD->ODR ^= (GPIO_ODR_OD13 | GPIO_ODR_OD12 | GPIO_ODR_OD14 | GPIO_ODR_OD15);
-				vTaskDelay(tick);
+				status = pdFALSE;
+				statusConvert = receivedDataToNumb(&receiveBuff[startIdx], /*Check received data at startIdx pos*/
+																		startIdx - startIdx, /*startIdx - startIdx (offset value)*/
+																		receiveBuffIdx - startIdx - 1, /*-startIdx (offset value) and -1 for endline/linebreak such as \r or \n from the terminal*/
+																		&numb); /*Variable hold data that was converted integer*/
+				startIdx = 0;
+				receiveBuffIdx = 0;
+				while(statusConvert && status == pdFALSE)
+				{			
+					GPIOD->ODR ^= (GPIO_ODR_OD13 | GPIO_ODR_OD12 | GPIO_ODR_OD14 | GPIO_ODR_OD15);
+					delay(numb);
+					status = xQueueReceive(queue, &command, 0);
+					if(receiveBuffIdx > 0) break;
+				}
 			}
 		}
 	}
@@ -246,6 +262,41 @@ void GPIO_LedsConfig(void)
 	/*LD5*/
 	GPIOD->MODER |= (0x1 << GPIO_MODER_MODE15_Pos); /*Output*/
 	GPIOD->OSPEEDR |= (0x2 << GPIO_OSPEEDR_OSPEED15_Pos); /*Fast speed*/
+}
+
+/*
+ * ==========================================
+ * Enable TIM3 peripheral clock APB1
+ * ==========================================
+ */
+void TIM3_EnablePeripheral(void)
+{
+	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+}
+
+/*
+ * ==========================================
+ * Blocking delay using TIM3, input parameter is time in millisecond
+ * ==========================================
+ */
+void delay(uint16_t timeInMs)
+{
+	TIM3->CNT = 0; /*Reset counter*/
+	TIM3->CR1 |= TIM_CR1_ARPE; /*Enable autoreload on update event*/
+	TIM3->ARR = 50;
+	TIM3->PSC = 1000 - 1;
+	TIM3->SR &= ~(TIM_SR_UIF); /*Clear update event flag*/
+	TIM3->CR1 |= TIM_CR1_CEN; /*Enable counter*/
+	/*Loop until timeInMs = 0*/
+	while(timeInMs > 0)
+	{
+		while(!((TIM3->SR & TIM_SR_UIF) != 0));/*Wait for counter to overflow*/
+		
+		timeInMs--;
+		TIM3->SR &= ~(TIM_SR_UIF);
+	}
+	
+	TIM3->CR1 &= ~(TIM_CR1_CEN); /*Disable counter*/
 }
 
 /*
